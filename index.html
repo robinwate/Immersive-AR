@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+    <title>Immersive AR – Tap to Place</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #000;
+        color: #fff;
+        overflow: hidden;
+        height: 100dvh;
+        width: 100dvw;
+      }
+
+      #canvas-container {
+        position: fixed;
+        inset: 0;
+      }
+
+      #canvas-container canvas {
+        display: block;
+        width: 100% !important;
+        height: 100% !important;
+      }
+
+      /* ── Overlay (shown during AR session via dom-overlay) ── */
+      #overlay {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        padding-bottom: env(safe-area-inset-bottom, 24px);
+        gap: 12px;
+      }
+
+      /* ── Start screen (shown before AR begins) ── */
+      #start-screen {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        padding: 32px;
+        background: rgba(0, 0, 0, 0.85);
+        z-index: 10;
+      }
+
+      #start-screen h1 {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+      }
+
+      #start-screen p {
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.7);
+        text-align: center;
+        max-width: 280px;
+        line-height: 1.5;
+      }
+
+      /* ── Buttons ── */
+      .ar-btn {
+        pointer-events: auto;
+        border: none;
+        border-radius: 100px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 600;
+        padding: 14px 36px;
+        transition: opacity 0.15s, transform 0.1s;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .ar-btn:active {
+        opacity: 0.8;
+        transform: scale(0.97);
+      }
+
+      #start-btn {
+        background: #0a84ff;
+        color: #fff;
+        font-size: 1.1rem;
+        padding: 16px 48px;
+      }
+
+      #reset-btn {
+        background: rgba(255, 255, 255, 0.18);
+        color: #fff;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        display: none;
+        margin-bottom: 16px;
+      }
+
+      /* ── In-session instruction hint ── */
+      #instructions {
+        display: none;
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 20px;
+        padding: 10px 22px;
+        font-size: 0.88rem;
+        color: rgba(255, 255, 255, 0.9);
+        text-align: center;
+        margin-bottom: 8px;
+        pointer-events: none;
+      }
+
+      /* ── Loading indicator ── */
+      #loading-msg {
+        display: none;
+        font-size: 0.88rem;
+        color: rgba(255, 255, 255, 0.55);
+        text-align: center;
+        margin-top: -8px;
+      }
+
+      /* ── Error banner ── */
+      #error-msg {
+        display: none;
+        background: rgba(255, 60, 60, 0.9);
+        border-radius: 12px;
+        padding: 12px 20px;
+        font-size: 0.9rem;
+        text-align: center;
+        max-width: 320px;
+        line-height: 1.4;
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Three.js canvas target -->
+    <div id="canvas-container"></div>
+
+    <!-- Pre-session start screen -->
+    <div id="start-screen">
+      <h1>AR Tap-to-Place</h1>
+      <p>Point your camera at a flat surface. Tap where you want to place the 3D object.</p>
+      <button id="start-btn" class="ar-btn">Start AR</button>
+      <div id="loading-msg"></div>
+      <div id="error-msg"></div>
+    </div>
+
+    <!-- In-session overlay (dom-overlay) -->
+    <div id="overlay">
+      <div id="instructions">Point at a surface to place the object</div>
+      <button id="reset-btn" class="ar-btn">Reset</button>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
