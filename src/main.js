@@ -28,6 +28,12 @@ class ARApp {
     this.hitTestSourceRequested = false;
     this.modelPlaced = false;
 
+    this.transientHitTestSource = null;
+    this.lastTransientHitMatrix = null;
+    this.lastTransientHitTime = 0;
+    this.lastReticleHitTime = 0;
+    this._transientPlacementMatrix = new THREE.Matrix4();
+
     this._boundRender = this._render.bind(this);
 
     this._init();
@@ -154,12 +160,24 @@ class ARApp {
   // ─── Private: XR event handlers ─────────────────────────────────────────────
 
   _onSelect() {
-    if (this.reticle.visible) {
-      // Place model at the current reticle position
-      const pos = new THREE.Vector3().setFromMatrixPosition(this.reticle.matrix);
+    // Prefer the most-recent transient (touch) hit pose if it is ≤ 500 ms old
+    const TRANSIENT_MAX_AGE_MS = 500;
+    const useTransient =
+      this.lastTransientHitMatrix !== null &&
+      performance.now() - this.lastTransientHitTime <= TRANSIENT_MAX_AGE_MS;
+
+    const placementMatrix = useTransient
+      ? this._transientPlacementMatrix.fromArray(this.lastTransientHitMatrix)
+      : this.reticle.visible
+        ? this.reticle.matrix
+        : null;
+
+    if (placementMatrix) {
+      // Place model at the determined position
+      const pos = new THREE.Vector3().setFromMatrixPosition(placementMatrix);
       this.model.position.copy(pos);
-      // Orient the model so it faces the same direction as the reticle surface
-      this.model.quaternion.setFromRotationMatrix(this.reticle.matrix);
+      // Orient the model to match the detected surface
+      this.model.quaternion.setFromRotationMatrix(placementMatrix);
       this.model.visible = true;
       this.modelPlaced = true;
 
@@ -174,6 +192,11 @@ class ARApp {
     this.modelPlaced = false;
     this.model.visible = false;
     this.reticle.visible = false;
+
+    this.transientHitTestSource = null;
+    this.lastTransientHitMatrix = null;
+    this.lastTransientHitTime = 0;
+    this.lastReticleHitTime = 0;
 
     document.getElementById('start-screen').style.display = 'flex';
     document.getElementById('instructions').style.display = 'none';
@@ -195,7 +218,7 @@ class ARApp {
       const refSpace = this.renderer.xr.getReferenceSpace();
       const session = this.renderer.xr.getSession();
 
-      // Request hit-test source once per session
+      // Request hit-test sources once per session
       if (!this.hitTestSourceRequested) {
         session
           .requestReferenceSpace('viewer')
@@ -209,18 +232,60 @@ class ARApp {
                 this._showError('Hit-test not available on this device.');
               });
           });
+
+        // Transient hit-test (touch input) for improved tap accuracy
+        session
+          .requestHitTestSourceForTransientInput({ profile: 'generic-touchscreen' })
+          .then((source) => {
+            this.transientHitTestSource = source;
+          })
+          .catch(() => {
+            // Transient hit-test unavailable; viewer-space hit-test will be used
+          });
+
         this.hitTestSourceRequested = true;
       }
 
-      // Move reticle to the nearest detected surface
+      // Move reticle to the nearest detected surface (viewer-space hit-test)
       if (this.hitTestSource) {
         const results = frame.getHitTestResults(this.hitTestSource);
         if (results.length > 0) {
           const pose = results[0].getPose(refSpace);
+          this.lastReticleHitTime = performance.now();
           this.reticle.visible = true;
           this.reticle.matrix.fromArray(pose.transform.matrix);
+          if (!this.modelPlaced) {
+            document.getElementById('instructions').textContent =
+              'Tap to place the object';
+          }
         } else {
-          this.reticle.visible = false;
+          // Hold reticle visible for 300 ms after the last valid hit
+          const HOLD_MS = 300;
+          const noHitMs = performance.now() - this.lastReticleHitTime;
+          if (noHitMs > HOLD_MS) {
+            this.reticle.visible = false;
+            if (!this.modelPlaced) {
+              document.getElementById('instructions').textContent =
+                noHitMs > 3000
+                  ? 'Try a textured, well-lit surface.'
+                  : 'Move phone to scan a surface';
+            }
+          }
+        }
+      }
+
+      // Capture transient (touch) hit-test results and store the latest pose
+      if (this.transientHitTestSource) {
+        const transientResults = frame.getHitTestResultsForTransientInput(
+          this.transientHitTestSource,
+        );
+        for (const result of transientResults) {
+          if (result.results.length > 0) {
+            const pose = result.results[0].getPose(refSpace);
+            this.lastTransientHitMatrix = pose.transform.matrix.slice();
+            this.lastTransientHitTime = performance.now();
+            break;
+          }
         }
       }
     }
@@ -284,6 +349,9 @@ class ARApp {
 
       this.renderer.xr.setReferenceSpaceType('local');
       await this.renderer.xr.setSession(session);
+
+      // Reset hit timing so guidance text starts from session launch
+      this.lastReticleHitTime = performance.now();
 
       session.addEventListener('end', () => this._onSessionEnd());
 
