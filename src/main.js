@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 /**
  * Immersive AR – Tap-to-Place
@@ -7,6 +8,13 @@ import * as THREE from 'three';
  * exactly where the user taps. The model stays anchored in the real world
  * as the user walks around it.
  */
+
+// Path to the default model. Update this constant to swap to a different model.
+const DEFAULT_MODEL_URL = '/models/vase/scene.gltf';
+
+// Target height in metres after normalisation.
+const MODEL_TARGET_HEIGHT = 0.25;
+
 class ARApp {
   constructor() {
     this.scene = null;
@@ -24,6 +32,7 @@ class ARApp {
 
     this._init();
     this._bindUI();
+    this._loadModel(DEFAULT_MODEL_URL);
   }
 
   // ─── Private: scene / renderer setup ───────────────────────────────────────
@@ -60,8 +69,8 @@ class ARApp {
     this.reticle = this._createReticle();
     this.scene.add(this.reticle);
 
-    // Placeholder 3D model
-    this.model = this._createModel();
+    // Model container – populated asynchronously by _loadModel()
+    this.model = new THREE.Group();
     this.model.visible = false;
     this.scene.add(this.model);
 
@@ -90,36 +99,49 @@ class ARApp {
     return mesh;
   }
 
-  _createModel() {
-    // Simple placeholder object: a pedestal + body block
-    const group = new THREE.Group();
+  /**
+   * Load a glTF/glB model from `url`, normalise it to MODEL_TARGET_HEIGHT metres
+   * tall, and shift it so its base rests at y = 0.
+   *
+   * Call this method again to swap to a different model at any time:
+   *   app._loadModel('/models/chair/scene.gltf');
+   *
+   * @param {string} url - Root-relative path to the .gltf or .glb file.
+   */
+  _loadModel(url) {
+    this._showLoadingMessage('Loading model…');
 
-    // Pedestal base
-    const baseGeo = new THREE.CylinderGeometry(0.08, 0.1, 0.015, 24);
-    const baseMat = new THREE.MeshPhongMaterial({ color: 0x222222 });
-    const base = new THREE.Mesh(baseGeo, baseMat);
-    base.position.y = 0.0075;
-    group.add(base);
+    const loader = new GLTFLoader();
+    loader.load(
+      url,
+      (gltf) => {
+        // Replace any previous model content
+        this.model.clear();
 
-    // Main body
-    const bodyGeo = new THREE.BoxGeometry(0.1, 0.18, 0.1);
-    const bodyMat = new THREE.MeshPhongMaterial({
-      color: 0x0a84ff,
-      emissive: 0x003366,
-      shininess: 60,
-    });
-    const body = new THREE.Mesh(bodyGeo, bodyMat);
-    body.position.y = 0.105;
-    group.add(body);
+        const root = gltf.scene;
 
-    // Small cap on top
-    const capGeo = new THREE.SphereGeometry(0.055, 16, 8);
-    const capMat = new THREE.MeshPhongMaterial({ color: 0x66ccff, emissive: 0x003366 });
-    const cap = new THREE.Mesh(capGeo, capMat);
-    cap.position.y = 0.215;
-    group.add(cap);
+        // ── Normalise scale so the model is MODEL_TARGET_HEIGHT metres tall ──
+        const box = new THREE.Box3().setFromObject(root);
+        const height = box.max.y - box.min.y;
+        if (height > 0) {
+          root.scale.setScalar(MODEL_TARGET_HEIGHT / height);
+        }
 
-    return group;
+        // ── Shift so the base of the model rests exactly at y = 0 ──
+        box.setFromObject(root); // recompute after scale change
+        root.position.y -= box.min.y;
+
+        this.model.add(root);
+        this._hideLoadingMessage();
+      },
+      undefined,
+      (_err) => {
+        this._showError(
+          'Failed to load 3D model. Check that the model files are present and reload the page.',
+        );
+        this._hideLoadingMessage();
+      },
+    );
   }
 
   // ─── Private: UI wiring ─────────────────────────────────────────────────────
@@ -206,7 +228,20 @@ class ARApp {
     this.renderer.render(this.scene, this.camera);
   }
 
-  // ─── Private: error display ──────────────────────────────────────────────────
+  // ─── Private: loading / error display ──────────────────────────────────────
+
+  _showLoadingMessage(msg) {
+    const el = document.getElementById('loading-msg');
+    if (el) {
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+  }
+
+  _hideLoadingMessage() {
+    const el = document.getElementById('loading-msg');
+    if (el) el.style.display = 'none';
+  }
 
   _showError(msg) {
     const el = document.getElementById('error-msg');
